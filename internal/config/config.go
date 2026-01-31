@@ -20,6 +20,8 @@ func ParseFlags() (*m3u8.DownloadConfig, error) {
 	flag.StringVar(&cfg.UserAgent, "user-agent", "", "Custom User-Agent")
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose logging")
 	flag.StringVar(&cfg.ProxyURL, "proxy", "", "Proxy URL")
+	flag.StringVar(&cfg.Origin, "origin", "", "HTTP Origin header")
+	flag.StringVar(&cfg.Referer, "referer", "", "HTTP Referer header")
 
 	flag.Parse()
 

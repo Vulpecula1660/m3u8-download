@@ -47,6 +47,8 @@ go build -o m3u8-download.exe
 | `-timeout` | 請求逾時時間 (秒) | 30 |
 | `-user-agent` | 自訂 User-Agent | 預設瀏覽器 UA |
 | `-proxy` | Proxy 網址 | - |
+| `-origin` | HTTP Origin header | - |
+| `-referer` | HTTP Referer header | - |
 | `-verbose` | 啟用詳細日誌 | false |
 
 ### 使用範例
@@ -74,6 +76,11 @@ go build -o m3u8-download.exe
 #### 使用 Proxy
 ```bash
 ./m3u8-download.exe -url "https://example.com/video.m3u8" -proxy "http://127.0.0.1:7890"
+```
+
+#### 指定 HTTP Headers
+```bash
+./m3u8-download.exe -url "https://example.com/video.m3u8" -origin "https://example.com" -referer "https://example.com/video"
 ```
 
 ## 專案架構

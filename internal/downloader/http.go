@@ -14,6 +14,8 @@ type HTTPClient struct {
 	retries   int
 	retryWait time.Duration
 	userAgent string
+	origin    string
+	referer   string
 }
 
 func NewHTTPClient(cfg *m3u8.DownloadConfig) *HTTPClient {
@@ -22,6 +24,8 @@ func NewHTTPClient(cfg *m3u8.DownloadConfig) *HTTPClient {
 		retries:   cfg.Retries,
 		retryWait: 3 * time.Second,
 		userAgent: cfg.UserAgent,
+		origin:    cfg.Origin,
+		referer:   cfg.Referer,
 	}
 
 	client.client = &http.Client{
@@ -70,7 +74,7 @@ func (c *HTTPClient) doGet(url string) ([]byte, error) {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", c.userAgent)
+	c.setHeaders(req)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -85,13 +89,23 @@ func (c *HTTPClient) doGet(url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
+func (c *HTTPClient) setHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", c.userAgent)
+	if c.origin != "" {
+		req.Header.Set("Origin", c.origin)
+	}
+	if c.referer != "" {
+		req.Header.Set("Referer", c.referer)
+	}
+}
+
 func (c *HTTPClient) DownloadStream(url string, writer io.Writer) error {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return err
 	}
 
-	req.Header.Set("User-Agent", c.userAgent)
+	c.setHeaders(req)
 
 	resp, err := c.client.Do(req)
 	if err != nil {

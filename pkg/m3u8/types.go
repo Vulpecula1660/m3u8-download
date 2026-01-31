@@ -22,6 +22,8 @@ type DownloadConfig struct {
 	UserAgent    string
 	Verbose      bool
 	ProxyURL     string
+	Origin       string
+	Referer      string
 	CustomHeader map[string]string
 }
 
