@@ -1,11 +1,13 @@
 package downloader
 
 import (
-	"bufio"
+	"bytes"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"m3u8-download/internal/decrypt"
 	"m3u8-download/pkg/m3u8"
@@ -40,12 +42,19 @@ func (d *Downloader) DownloadSegments(playlist *m3u8.Playlist, cacheDir string, 
 	var keyData []byte
 	var keyDataErr error
 	var keyDataLoaded bool
+	var decryptor *decrypt.Decryptor
+
+	var completed atomic.Int64
+	var failed atomic.Int64
 
 	if playlist.IsEncrypted && playlist.Key != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			keyData, keyDataErr = d.httpClient.Get(playlist.Key)
+			if keyDataErr == nil {
+				decryptor, keyDataErr = decrypt.NewDecryptor(keyData, nil)
+			}
 			keyDataLoaded = true
 		}()
 	}
@@ -63,18 +72,14 @@ func (d *Downloader) DownloadSegments(playlist *m3u8.Playlist, cacheDir string, 
 
 			filePath := fmt.Sprintf("%s/%s", cacheDir, seg.Name)
 
-			err := d.downloadSegment(seg.Url, filePath, playlist.IsEncrypted, keyData, keyDataLoaded, &mu)
+			err := d.downloadSegment(seg.Url, filePath, playlist.IsEncrypted, decryptor, keyDataLoaded, &mu)
 			if err != nil {
 				d.logger.Error("Failed to download segment", "index", idx, "url", seg.Url, "error", err)
-				mu.Lock()
-				stats.Failed++
-				mu.Unlock()
+				failed.Add(1)
 				return
 			}
 
-			mu.Lock()
-			stats.Completed++
-			mu.Unlock()
+			completed.Add(1)
 		}(i, segment)
 	}
 
@@ -84,36 +89,52 @@ func (d *Downloader) DownloadSegments(playlist *m3u8.Playlist, cacheDir string, 
 		return stats, fmt.Errorf("failed to download encryption key: %w", keyDataErr)
 	}
 
+	stats.Completed = int(completed.Load())
+	stats.Failed = int(failed.Load())
+
 	return stats, nil
 }
 
-func (d *Downloader) downloadSegment(url, filePath string, isEncrypted bool, key []byte, keyLoaded bool, mu *sync.Mutex) error {
+func (d *Downloader) downloadSegment(url, filePath string, isEncrypted bool, decryptor *decrypt.Decryptor, keyLoaded bool, mu *sync.Mutex) error {
+	if !isEncrypted {
+		file, err := os.Create(filePath)
+		if err != nil {
+			return fmt.Errorf("failed to create file: %w", err)
+		}
+		defer file.Close()
+
+		buf := new(bytes.Buffer)
+		if err := d.httpClient.DownloadStream(url, buf); err != nil {
+			return err
+		}
+
+		data := decrypt.RemoveSyncBytePrefix(buf.Bytes())
+		_, err = file.Write(data)
+		return err
+	}
+
+	mu.Lock()
+	ready := keyLoaded
+	mu.Unlock()
+
+	if !ready {
+		return fmt.Errorf("encryption key not loaded")
+	}
+
 	data, err := d.httpClient.Get(url)
 	if err != nil {
 		return err
 	}
 
-	if isEncrypted {
-		mu.Lock()
-		ready := keyLoaded
-		mu.Unlock()
+	mu.Lock()
+	decrypted, err := decryptor.Decrypt(data)
+	mu.Unlock()
 
-		if !ready {
-			return fmt.Errorf("encryption key not loaded")
-		}
-
-		mu.Lock()
-		decrypted, err := decrypt.Decrypt(data, key, nil)
-		mu.Unlock()
-
-		if err != nil {
-			return fmt.Errorf("decryption failed: %w", err)
-		}
-
-		data = decrypt.RemoveSyncBytePrefix(decrypted)
-	} else {
-		data = decrypt.RemoveSyncBytePrefix(data)
+	if err != nil {
+		return fmt.Errorf("decryption failed: %w", err)
 	}
+
+	data = decrypt.RemoveSyncBytePrefix(decrypted)
 
 	file, err := os.Create(filePath)
 	if err != nil {
@@ -121,15 +142,8 @@ func (d *Downloader) downloadSegment(url, filePath string, isEncrypted bool, key
 	}
 	defer file.Close()
 
-	writer := bufio.NewWriter(file)
-	_, err = writer.Write(data)
-	if err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
-	}
-
-	writer.Flush()
-
-	return nil
+	_, err = file.Write(data)
+	return err
 }
 
 func (d *Downloader) MergeFiles(cacheDir, output string) error {
@@ -144,21 +158,26 @@ func (d *Downloader) MergeFiles(cacheDir, output string) error {
 		return fmt.Errorf("failed to read cache directory: %w", err)
 	}
 
+	buf := make([]byte, 32*1024)
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
 
 		filePath := fmt.Sprintf("%s/%s", cacheDir, entry.Name())
-		data, err := os.ReadFile(filePath)
+		inFile, err := os.Open(filePath)
 		if err != nil {
-			d.logger.Warn("Failed to read file", "path", filePath, "error", err)
+			d.logger.Warn("Failed to open file", "path", filePath, "error", err)
 			continue
 		}
 
-		if _, err := outFile.Write(data); err != nil {
-			return fmt.Errorf("failed to write to output file: %w", err)
+		if _, err := io.CopyBuffer(outFile, inFile, buf); err != nil {
+			inFile.Close()
+			return fmt.Errorf("failed to copy file: %w", err)
 		}
+
+		inFile.Close()
 
 		if err := os.Remove(filePath); err != nil {
 			d.logger.Warn("Failed to remove file", "path", filePath, "error", err)

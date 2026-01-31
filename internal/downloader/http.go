@@ -84,3 +84,25 @@ func (c *HTTPClient) doGet(url string) ([]byte, error) {
 
 	return io.ReadAll(resp.Body)
 }
+
+func (c *HTTPClient) DownloadStream(url string, writer io.Writer) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return m3u8.NewHTTPError(resp.StatusCode, url)
+	}
+
+	_, err = io.Copy(writer, resp.Body)
+	return err
+}
