@@ -2,72 +2,93 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
-	"path/filepath"
-	"sync"
+	"time"
 
-	"m3u8-download/service"
+	"m3u8-download/internal/config"
+	"m3u8-download/internal/downloader"
+	"m3u8-download/internal/parser"
 
-	progressbar "github.com/schollz/progressbar/v3"
 	"github.com/twinj/uuid"
 )
 
 func main() {
-	urlStr := ""
-
-	bodyByte, err := service.HttpGet(urlStr)
+	cfg, err := config.ParseFlags()
 	if err != nil {
-		log.Fatal(fmt.Errorf("HttpGet error:%s", err))
+		fmt.Printf("Error: %v\n", err)
+		os.Exit(1)
 	}
 
-	body := string(bodyByte)
-
-	host, err := service.GetM3u8Bash(urlStr)
-	if err != nil {
-		log.Fatal(fmt.Errorf("GetM3u8Bash error:%s", err))
-	}
-
-	key, err := service.GetM3u8Key(host, body)
-	if err != nil {
-		log.Fatal(fmt.Errorf("GetM3u8Key error:%s", err))
-	}
-
-	tsList, err := service.GetTsList(host, body, urlStr)
-	if err != nil {
-		log.Fatal(fmt.Errorf("GetTsList error:%s", err))
-	}
+	logger := setupLogger(cfg.Verbose)
 
 	id := uuid.NewV4().String()
 
-	err = service.InitCachePath(id)
+	cacheDir, err := config.EnsureCacheDir(id)
 	if err != nil {
-		log.Fatal(fmt.Errorf("InitCachePath error:%s", err))
+		logger.Error("Failed to create cache directory", "error", err)
+		os.Exit(1)
 	}
 
-	WorkPath, err := os.Getwd()
+	httpClient := downloader.NewHTTPClient(cfg)
+	dl := downloader.NewDownloader(httpClient, logger)
+
+	logger.Info("Fetching M3U8 playlist", "url", cfg.URL)
+	body, err := httpClient.Get(cfg.URL)
 	if err != nil {
-		log.Fatal(fmt.Errorf(" Getwd error:%s", err))
+		logger.Error("Failed to fetch M3U8", "error", err)
+		os.Exit(1)
 	}
 
-	tsPath := filepath.Join(WorkPath, "cache", id)
-	bar := progressbar.Default(int64(len(tsList)))
-	var wg sync.WaitGroup
-	ch := make(chan struct{}, 15)
-
-	wg.Add(len(tsList))
-	for _, v := range tsList {
-		ch <- struct{}{}
-		FilePath := tsPath + "/" + v.Name
-		go service.DownloadTs(v.Url, FilePath, key, bar, &wg, ch)
-	}
-
-	wg.Wait()
-
-	err = service.MergeFile(tsPath, id+".ts")
+	logger.Info("Parsing playlist")
+	playlist, err := parser.ParsePlaylist(string(body), cfg.URL)
 	if err != nil {
-		log.Fatal(fmt.Errorf(" MergeFile error:%s", err))
+		logger.Error("Failed to parse playlist", "error", err)
+		os.Exit(1)
 	}
 
-	fmt.Println("下載完成")
+	logger.Info("Playlist parsed", "segments", len(playlist.Segments), "encrypted", playlist.IsEncrypted)
+
+	if cfg.Output == "" {
+		cfg.Output = fmt.Sprintf("%s.ts", id)
+	}
+
+	logger.Info("Starting download", "output", cfg.Output, "workers", cfg.Workers)
+	startTime := time.Now()
+
+	stats, err := dl.DownloadSegments(playlist, cacheDir, cfg.Workers)
+	if err != nil {
+		logger.Error("Download failed", "error", err)
+		os.Exit(1)
+	}
+
+	logger.Info("Merging files")
+	if err := dl.MergeFiles(cacheDir, cfg.Output); err != nil {
+		logger.Error("Failed to merge files", "error", err)
+		os.Exit(1)
+	}
+
+	if err := config.CleanupCacheDir(cacheDir); err != nil {
+		logger.Warn("Failed to cleanup cache directory", "error", err)
+	}
+
+	elapsed := time.Since(startTime)
+	logger.Info("Download completed",
+		"file", cfg.Output,
+		"segments", stats.Total,
+		"completed", stats.Completed,
+		"failed", stats.Failed,
+		"duration", elapsed,
+	)
+}
+
+func setupLogger(verbose bool) *slog.Logger {
+	level := slog.LevelInfo
+	if verbose {
+		level = slog.LevelDebug
+	}
+
+	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+	}))
 }
