@@ -26,6 +26,8 @@ const (
 	ParseModeRun ParseMode = iota
 	// ParseModeShowHelp indicates help was requested and already printed.
 	ParseModeShowHelp
+	// ParseModeShowVersion indicates version was requested.
+	ParseModeShowVersion
 )
 
 // ParseFlags parses command-line arguments from os.Args for compatibility.
@@ -36,6 +38,9 @@ func ParseFlags() (*m3u8.DownloadConfig, error) {
 	}
 
 	if mode == ParseModeShowHelp {
+		return nil, flag.ErrHelp
+	}
+	if mode == ParseModeShowVersion {
 		return nil, flag.ErrHelp
 	}
 
@@ -50,7 +55,8 @@ func ParseArgs(args []string, stdout, stderr io.Writer) (*m3u8.DownloadConfig, P
 	}
 
 	var cfg m3u8.DownloadConfig
-	fs := newFlagSet(&cfg, stderr)
+	var showVersion bool
+	fs := newFlagSet(&cfg, &showVersion, stderr)
 
 	err := fs.Parse(args)
 	if err != nil {
@@ -59,6 +65,9 @@ func ParseArgs(args []string, stdout, stderr io.Writer) (*m3u8.DownloadConfig, P
 			return nil, ParseModeShowHelp, nil
 		}
 		return nil, ParseModeRun, fmt.Errorf("%w；請使用 -h、--help 或 help 查看說明", err)
+	}
+	if showVersion {
+		return nil, ParseModeShowVersion, nil
 	}
 
 	if cfg.URL == "" {
@@ -126,7 +135,7 @@ func CleanupCacheDir(cacheDir string) error {
 	return nil
 }
 
-func newFlagSet(cfg *m3u8.DownloadConfig, stderr io.Writer) *flag.FlagSet {
+func newFlagSet(cfg *m3u8.DownloadConfig, showVersion *bool, stderr io.Writer) *flag.FlagSet {
 	fs := flag.NewFlagSet("m3u8-download", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {}
@@ -141,6 +150,7 @@ func newFlagSet(cfg *m3u8.DownloadConfig, stderr io.Writer) *flag.FlagSet {
 	fs.StringVar(&cfg.ProxyURL, "proxy", "", "Proxy 網址")
 	fs.StringVar(&cfg.Origin, "origin", "", "HTTP Origin header")
 	fs.StringVar(&cfg.Referer, "referer", "", "HTTP Referer header")
+	fs.BoolVar(showVersion, "version", false, "顯示版本資訊")
 
 	return fs
 }
@@ -173,12 +183,15 @@ func printHelp(stdout io.Writer) {
         HTTP Referer header
   -verbose
         啟用詳細日誌
+  -version, --version
+        顯示版本資訊
   -h, --help
         顯示說明
 
 範例：
   m3u8-download -url "https://example.com/video.m3u8"
   m3u8-download -url "https://example.com/video.m3u8" -output "video.ts"
+  m3u8-download --version
   m3u8-download help
 `, defaultWorkers, defaultRetries, defaultTimeout)
 }

@@ -13,19 +13,33 @@
 - 自動清理暫存檔案
 - 結構化日誌輸出
 - 可自訂 HTTP 請求選項
+- 支援 `-version` / `--version` 查詢版本資訊
 
 ## 安裝需求
 
-- Go 1.22 或以上版本
+- 直接使用 Release 二進位：不需要 Go 環境
+- 從原始碼建置：Go 1.22 或以上版本
 
-## 安裝步驟
+## 從 Releases 下載（建議）
+
+1. 前往 [Releases](../../releases) 頁面下載對應平台壓縮包。
+2. 解壓後即可執行 `m3u8-download`（Windows 為 `m3u8-download.exe`）。
+3. 可搭配 `checksums.txt` 驗證下載完整性。
+
+目前提供：
+- `linux/amd64`
+- `linux/arm64`
+- `windows/amd64`
+- `darwin/arm64`
+
+## 從原始碼建置
 
 ```bash
 # 安裝依賴
 go mod tidy
 
 # 建置程式
-go build -o m3u8-download.exe
+go build -o m3u8-download
 ```
 
 ## 使用方法
@@ -33,10 +47,11 @@ go build -o m3u8-download.exe
 ### 命令列參數
 
 ```bash
-./m3u8-download.exe -url <M3U8_URL> [選項]
-./m3u8-download.exe -h
-./m3u8-download.exe --help
-./m3u8-download.exe help
+./m3u8-download -url <M3U8_URL> [選項]
+./m3u8-download -h
+./m3u8-download --help
+./m3u8-download --version
+./m3u8-download help
 ```
 
 未提供任何參數時，程式會直接顯示 help 說明並結束。
@@ -55,49 +70,58 @@ go build -o m3u8-download.exe
 | `-origin` | HTTP Origin header | - |
 | `-referer` | HTTP Referer header | - |
 | `-verbose` | 啟用詳細日誌 | false |
+| `-version`, `--version` | 顯示版本資訊 | - |
 | `-h`, `--help` | 顯示 help 說明 | - |
 
 ### 使用範例
 
 #### 基本下載
 ```bash
-./m3u8-download.exe -url "https://example.com/video.m3u8"
+./m3u8-download -url "https://example.com/video.m3u8"
 ```
 
 #### 指定輸出檔名
 ```bash
-./m3u8-download.exe -url "https://example.com/video.m3u8" -output "video.ts"
+./m3u8-download -url "https://example.com/video.m3u8" -output "video.ts"
 ```
 
 #### 自訂並發數和重試次數
 ```bash
-./m3u8-download.exe -url "https://example.com/video.m3u8" -workers 20 -retries 5
+./m3u8-download -url "https://example.com/video.m3u8" -workers 20 -retries 5
 ```
 
 #### 啟用詳細日誌
 ```bash
-./m3u8-download.exe -url "https://example.com/video.m3u8" -verbose
+./m3u8-download -url "https://example.com/video.m3u8" -verbose
 ```
 
 #### 顯示 help
 ```bash
-./m3u8-download.exe help
+./m3u8-download help
+```
+
+#### 顯示版本
+```bash
+./m3u8-download --version
 ```
 
 #### 使用 Proxy
 ```bash
-./m3u8-download.exe -url "https://example.com/video.m3u8" -proxy "http://127.0.0.1:7890"
+./m3u8-download -url "https://example.com/video.m3u8" -proxy "http://127.0.0.1:7890"
 ```
 
 #### 指定 HTTP Headers
 ```bash
-./m3u8-download.exe -url "https://example.com/video.m3u8" -origin "https://example.com" -referer "https://example.com/video"
+./m3u8-download -url "https://example.com/video.m3u8" -origin "https://example.com" -referer "https://example.com/video"
 ```
 
 ## 專案架構
 
 ```
 m3u8-download/
+├── .github/workflows/
+│   └── release.yml           # Tag 觸發自動發布 GitHub Releases
+├── .goreleaser.yml           # GoReleaser 發版設定
 ├── main.go                  # 程式入口點
 ├── go.mod/go.sum            # 依賴管理
 ├── internal/
@@ -141,6 +165,15 @@ go fmt ./...
 
 ```bash
 go vet ./...
+```
+
+### 發版（GitHub Releases）
+
+推送語義化版本標籤後，GitHub Actions 會自動建立 Release 並上傳多平台二進位：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 ## 依賴套件

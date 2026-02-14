@@ -118,6 +118,16 @@ func TestParseArgs(t *testing.T) {
 			stdoutHas: "選項：",
 		},
 		{
+			name:     "short version flag shows version mode",
+			args:     []string{"-version"},
+			wantMode: ParseModeShowVersion,
+		},
+		{
+			name:     "long version flag shows version mode",
+			args:     []string{"--version"},
+			wantMode: ParseModeShowVersion,
+		},
+		{
 			name:        "missing url returns error",
 			args:        []string{"-workers", "2"},
 			wantMode:    ParseModeRun,

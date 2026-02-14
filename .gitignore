@@ -19,3 +19,4 @@ cache/
 
 # Output files
 *.ts
+dist/

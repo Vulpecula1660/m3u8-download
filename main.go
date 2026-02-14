@@ -14,6 +14,12 @@ import (
 	"github.com/twinj/uuid"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
@@ -26,6 +32,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 
 	if mode == config.ParseModeShowHelp {
+		return 0
+	}
+	if mode == config.ParseModeShowVersion {
+		printVersion(stdout)
 		return 0
 	}
 
@@ -91,6 +101,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	)
 
 	return 0
+}
+
+func printVersion(stdout io.Writer) {
+	_, _ = fmt.Fprintf(stdout, "m3u8-download version %s (commit: %s, built: %s)\n", version, commit, date)
 }
 
 func setupLogger(verbose bool) *slog.Logger {

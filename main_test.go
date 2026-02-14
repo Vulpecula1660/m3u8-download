@@ -181,6 +181,20 @@ func TestRunCLIPaths(t *testing.T) {
 			avoidStderr: "Error:",
 		},
 		{
+			name:        "short version flag shows version",
+			args:        []string{"-version"},
+			wantCode:    0,
+			wantStdout:  "m3u8-download version",
+			avoidStderr: "Error:",
+		},
+		{
+			name:        "long version flag shows version",
+			args:        []string{"--version"},
+			wantCode:    0,
+			wantStdout:  "m3u8-download version",
+			avoidStderr: "Error:",
+		},
+		{
 			name:        "missing required url returns error",
 			args:        []string{"-workers", "2"},
 			wantCode:    1,
