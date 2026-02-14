@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -14,10 +15,18 @@ import (
 )
 
 func main() {
-	cfg, err := config.ParseFlags()
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func run(args []string, stdout, stderr io.Writer) int {
+	cfg, mode, err := config.ParseArgs(args, stdout, stderr)
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+
+	if mode == config.ParseModeShowHelp {
+		return 0
 	}
 
 	logger := setupLogger(cfg.Verbose)
@@ -27,7 +36,7 @@ func main() {
 	cacheDir, err := config.EnsureCacheDir(id)
 	if err != nil {
 		logger.Error("Failed to create cache directory", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	httpClient := downloader.NewHTTPClient(cfg)
@@ -37,14 +46,14 @@ func main() {
 	body, err := httpClient.Get(cfg.URL)
 	if err != nil {
 		logger.Error("Failed to fetch M3U8", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	logger.Info("Parsing playlist")
 	playlist, err := parser.ParsePlaylist(string(body), cfg.URL)
 	if err != nil {
 		logger.Error("Failed to parse playlist", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	logger.Info("Playlist parsed", "segments", len(playlist.Segments), "encrypted", playlist.IsEncrypted)
@@ -59,13 +68,13 @@ func main() {
 	stats, err := dl.DownloadSegments(playlist, cacheDir, cfg.Workers)
 	if err != nil {
 		logger.Error("Download failed", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	logger.Info("Merging files")
 	if err := dl.MergeFiles(cacheDir, cfg.Output); err != nil {
 		logger.Error("Failed to merge files", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	if err := config.CleanupCacheDir(cacheDir); err != nil {
@@ -80,6 +89,8 @@ func main() {
 		"failed", stats.Failed,
 		"duration", elapsed,
 	)
+
+	return 0
 }
 
 func setupLogger(verbose bool) *slog.Logger {

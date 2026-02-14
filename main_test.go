@@ -1,7 +1,7 @@
 package main
 
 import (
-	"flag"
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -151,42 +151,74 @@ segment1.ts
 	os.Remove(cfg.Output)
 }
 
-func TestParseFlags(t *testing.T) {
+func TestRunCLIPaths(t *testing.T) {
 	tests := []struct {
-		name    string
-		args    []string
-		wantErr bool
+		name        string
+		args        []string
+		wantCode    int
+		wantStdout  string
+		wantStderr  string
+		avoidStderr string
+		avoidStdout string
 	}{
 		{
-			name:    "valid url",
-			args:    []string{"-url", "http://example.com/video.m3u8"},
-			wantErr: false,
+			name:       "no args shows help",
+			args:       []string{},
+			wantCode:   0,
+			wantStdout: "用法：",
+		},
+		{
+			name:       "help subcommand shows help",
+			args:       []string{"help"},
+			wantCode:   0,
+			wantStdout: "m3u8-download help",
+		},
+		{
+			name:        "help flag shows help",
+			args:        []string{"-h"},
+			wantCode:    0,
+			wantStdout:  "顯示說明",
+			avoidStderr: "Error:",
+		},
+		{
+			name:        "missing required url returns error",
+			args:        []string{"-workers", "2"},
+			wantCode:    1,
+			wantStderr:  "請使用 -h、--help 或 help 查看說明",
+			avoidStdout: "用法：",
+		},
+		{
+			name:       "unknown flag returns error",
+			args:       []string{"-unknown"},
+			wantCode:   1,
+			wantStderr: "請使用 -h、--help 或 help 查看說明",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			fs := flag.NewFlagSet("test", flag.ContinueOnError)
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
 
-			var url string
-			fs.StringVar(&url, "url", "", "M3U8 URL (required)")
-
-			err := fs.Parse(tt.args)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Error("expected error but got none")
-				}
-				return
+			code := run(tt.args, &stdout, &stderr)
+			if code != tt.wantCode {
+				t.Fatalf("run() code = %d, want %d", code, tt.wantCode)
 			}
 
-			if err != nil {
-				t.Errorf("unexpected error: %v", err)
-				return
+			if tt.wantStdout != "" && !strings.Contains(stdout.String(), tt.wantStdout) {
+				t.Errorf("stdout %q does not contain %q", stdout.String(), tt.wantStdout)
 			}
 
-			if url == "" {
-				t.Error("URL is empty")
+			if tt.wantStderr != "" && !strings.Contains(stderr.String(), tt.wantStderr) {
+				t.Errorf("stderr %q does not contain %q", stderr.String(), tt.wantStderr)
+			}
+
+			if tt.avoidStdout != "" && strings.Contains(stdout.String(), tt.avoidStdout) {
+				t.Errorf("stdout %q should not contain %q", stdout.String(), tt.avoidStdout)
+			}
+
+			if tt.avoidStderr != "" && strings.Contains(stderr.String(), tt.avoidStderr) {
+				t.Errorf("stderr %q should not contain %q", stderr.String(), tt.avoidStderr)
 			}
 		})
 	}

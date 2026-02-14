@@ -34,7 +34,12 @@ go build -o m3u8-download.exe
 
 ```bash
 ./m3u8-download.exe -url <M3U8_URL> [選項]
+./m3u8-download.exe -h
+./m3u8-download.exe --help
+./m3u8-download.exe help
 ```
+
+未提供任何參數時，程式會直接顯示 help 說明並結束。
 
 ### 可用選項
 
@@ -50,6 +55,7 @@ go build -o m3u8-download.exe
 | `-origin` | HTTP Origin header | - |
 | `-referer` | HTTP Referer header | - |
 | `-verbose` | 啟用詳細日誌 | false |
+| `-h`, `--help` | 顯示 help 說明 | - |
 
 ### 使用範例
 
@@ -71,6 +77,11 @@ go build -o m3u8-download.exe
 #### 啟用詳細日誌
 ```bash
 ./m3u8-download.exe -url "https://example.com/video.m3u8" -verbose
+```
+
+#### 顯示 help
+```bash
+./m3u8-download.exe help
 ```
 
 #### 使用 Proxy
